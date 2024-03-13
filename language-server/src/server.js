@@ -7,7 +7,8 @@ import {
   ProposedFeatures,
   SemanticTokensBuilder,
   TextDocuments,
-  TextDocumentSyncKind
+  TextDocumentSyncKind,
+  CompletionItemKind
 } from "vscode-languageserver/node.js";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
@@ -39,8 +40,23 @@ connection.console.log("Starting JSON Schema service ...");
 let hasWorkspaceFolderCapability = false;
 let hasWorkspaceWatchCapability = false;
 
+let availableDialects = [];
+const getDialectIds = () => [
+  "https://json-schema.org/draft/2020-12/schema",
+  "https://json-schema.org/draft/2019-09/schema",
+  "http://json-schema.org/draft-04/schema",
+  "http://json-schema.org/draft-06/schema",
+  "http://json-schema.org/draft-07/schema"
+];
+
 connection.onInitialize(({ capabilities, workspaceFolders }) => {
   connection.console.log("Initializing JSON Schema service ...");
+
+  try {
+    availableDialects = getDialectIds();
+  } catch (error) {
+    connection.console.error(`Error loading JSON Schema dialects: ${error.message}`);
+  }
 
   if (workspaceFolders) {
     addWorkspaceFolders(workspaceFolders);
@@ -299,5 +315,42 @@ connection.languages.semanticTokens.onDelta(({ textDocument, previousResultId })
 
   return builder.buildEdits();
 });
+
+connection.onCompletion(async (textDocumentPosition) => {
+  const document = documents.get(textDocumentPosition.textDocument.uri);
+  connection.console.log("Triggering $schema completion");
+  if (!document) {
+    return [];
+  }
+
+  try {
+    const instance = JsoncInstance.fromTextDocument(document);
+    // eslint-disable-next-line no-console
+    console.log(instance);
+    if (isUserEditingSchemaProperty(instance, textDocumentPosition)) {
+      return availableDialects.map((dialectId) => ({
+        label: dialectId,
+        kind: CompletionItemKind
+      }));
+    }
+  } catch (error) {
+    connection.console.error(`Error processing $schema completion: ${error.message}`);
+  }
+
+  return [];
+});
+
+function isUserEditingSchemaProperty(instance, position) {
+  // eslint-disable-next-line no-unused-vars
+  for (const [key, value] of instance.entries()) {
+    if (key.value === "$schema") {
+      const keyStartPosition = key.startPosition();
+      const keyEndPosition = key.endPosition();
+      return position.isAfterOrEqual(keyStartPosition) && position.isBeforeOrEqual(keyEndPosition);
+    }
+  }
+
+  return false;
+}
 
 documents.listen(connection);
