@@ -8,7 +8,9 @@ import {
   SemanticTokensBuilder,
   TextDocuments,
   TextDocumentSyncKind,
-  CompletionItemKind
+  CompletionItem,
+  CompletionItemKind,
+  TextEdit
 } from "vscode-languageserver/node.js";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
@@ -40,7 +42,7 @@ connection.console.log("Starting JSON Schema service ...");
 let hasWorkspaceFolderCapability = false;
 let hasWorkspaceWatchCapability = false;
 
-let availableDialects = [];
+
 const getDialectIds = () => [
   "https://json-schema.org/draft/2020-12/schema",
   "https://json-schema.org/draft/2019-09/schema",
@@ -48,15 +50,10 @@ const getDialectIds = () => [
   "http://json-schema.org/draft-06/schema",
   "http://json-schema.org/draft-07/schema"
 ];
+const availableDialects = getDialectIds();
 
 connection.onInitialize(({ capabilities, workspaceFolders }) => {
   connection.console.log("Initializing JSON Schema service ...");
-
-  try {
-    availableDialects = getDialectIds();
-  } catch (error) {
-    connection.console.error(`Error loading JSON Schema dialects: ${error.message}`);
-  }
 
   if (workspaceFolders) {
     addWorkspaceFolders(workspaceFolders);
@@ -67,6 +64,10 @@ connection.onInitialize(({ capabilities, workspaceFolders }) => {
 
   const serverCapabilities = {
     textDocumentSync: TextDocumentSyncKind.Incremental,
+    completionProvider: { 
+      resolveProvider: false, // Assuming you don't have a resolveProvider
+      triggerCharacters: [ '"', ':', ' ' ]  // Might need to adjust for your use case
+    },
     semanticTokensProvider: {
       legend: buildSemanticTokensLegend(capabilities.textDocument?.semanticTokens),
       range: false,
@@ -316,41 +317,44 @@ connection.languages.semanticTokens.onDelta(({ textDocument, previousResultId })
   return builder.buildEdits();
 });
 
-connection.onCompletion(async (textDocumentPosition) => {
-  const document = documents.get(textDocumentPosition.textDocument.uri);
-  connection.console.log("Triggering $schema completion");
-  if (!document) {
-    return [];
-  }
 
-  try {
-    const instance = JsoncInstance.fromTextDocument(document);
-    // eslint-disable-next-line no-console
-    console.log(instance);
-    if (isUserEditingSchemaProperty(instance, textDocumentPosition)) {
-      return availableDialects.map((dialectId) => ({
-        label: dialectId,
-        kind: CompletionItemKind
-      }));
-    }
-  } catch (error) {
-    connection.console.error(`Error processing $schema completion: ${error.message}`);
-  }
-
-  return [];
-});
-
-function isUserEditingSchemaProperty(instance, position) {
-  // eslint-disable-next-line no-unused-vars
+function findPropertyAtPosition(instance, position) {
   for (const [key, value] of instance.entries()) {
-    if (key.value === "$schema") {
-      const keyStartPosition = key.startPosition();
-      const keyEndPosition = key.endPosition();
-      return position.isAfterOrEqual(keyStartPosition) && position.isBeforeOrEqual(keyEndPosition);
-    }
-  }
-
-  return false;
+      if (position.line >= key.startPosition().line && 
+          position.character >= key.startPosition().character &&
+          position.line <= value.endPosition().line && 
+          position.character <= value.endPosition().character) {  
+             return { key, value }; // Return both key and value
+          }
+      }
+      return undefined;
 }
+
+connection.onCompletion((textDocumentPosition) => {
+  const doc = documents.get(textDocumentPosition.textDocument.uri);
+  connection.console.log("Completion is Triggered !")
+  if (!doc) { 
+      return []; 
+  }
+  let schemaSuggestions = ["http://json-schema.org/draft-07/schema#", "http://json-schema.org/draft-04/schema",
+  "http://json-schema.org/draft-06/schema",
+  "http://json-schema.org/draft-07/schema"]
+  const instance = JsoncInstance.fromTextDocument(doc);
+  const currentProperty = findPropertyAtPosition(instance, textDocumentPosition.position);
+
+  if (currentProperty?.key.value() === "$schema") {
+    connection.console.log("***** Found the $schema keywork *****")
+    const currentSchemaURI = currentProperty.value.value();
+      //  Your list of schema URIs
+     
+      return schemaSuggestions.map(uri => { 
+        return{ 
+          label: uri, 
+          kind: CompletionItemKind.Keyword
+      } 
+    }); 
+  }
+  connection.console.log("***** Didn't find the $schema keywork *****")
+});
 
 documents.listen(connection);
