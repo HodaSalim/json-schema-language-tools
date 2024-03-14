@@ -8,14 +8,15 @@ import {
   SemanticTokensBuilder,
   TextDocuments,
   TextDocumentSyncKind,
-  CompletionItem,
-  CompletionItemKind,
-  TextEdit
+  CompletionItemKind
 } from "vscode-languageserver/node.js";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
 // Hyperjump
-import { setMetaSchemaOutputFormat, setShouldValidateSchema } from "@hyperjump/json-schema";
+import {
+  setMetaSchemaOutputFormat,
+  setShouldValidateSchema
+} from "@hyperjump/json-schema";
 import { hasDialect, DETAILED } from "@hyperjump/json-schema/experimental";
 import "@hyperjump/json-schema/draft-2020-12";
 import "@hyperjump/json-schema/draft-2019-09";
@@ -27,7 +28,13 @@ import "@hyperjump/json-schema/draft-04";
 import { decomposeSchemaDocument, validate } from "./json-schema.js";
 import { JsoncInstance } from "./jsonc-instance.js";
 import { invalidNodes } from "./validation.js";
-import { addWorkspaceFolders, workspaceSchemas, removeWorkspaceFolders, watchWorkspace, waitUntil } from "./workspace.js";
+import {
+  addWorkspaceFolders,
+  workspaceSchemas,
+  removeWorkspaceFolders,
+  watchWorkspace,
+  waitUntil
+} from "./workspace.js";
 import { getSemanticTokens } from "./semantic-tokens.js";
 
 
@@ -42,16 +49,6 @@ connection.console.log("Starting JSON Schema service ...");
 let hasWorkspaceFolderCapability = false;
 let hasWorkspaceWatchCapability = false;
 
-
-const getDialectIds = () => [
-  "https://json-schema.org/draft/2020-12/schema",
-  "https://json-schema.org/draft/2019-09/schema",
-  "http://json-schema.org/draft-04/schema",
-  "http://json-schema.org/draft-06/schema",
-  "http://json-schema.org/draft-07/schema"
-];
-const availableDialects = getDialectIds();
-
 connection.onInitialize(({ capabilities, workspaceFolders }) => {
   connection.console.log("Initializing JSON Schema service ...");
 
@@ -60,13 +57,14 @@ connection.onInitialize(({ capabilities, workspaceFolders }) => {
   }
 
   hasWorkspaceFolderCapability = !!capabilities.workspace?.workspaceFolders;
-  hasWorkspaceWatchCapability = !!capabilities.workspace?.didChangeWatchedFiles?.dynamicRegistration;
+  hasWorkspaceWatchCapability
+    = !!capabilities.workspace?.didChangeWatchedFiles?.dynamicRegistration;
 
   const serverCapabilities = {
     textDocumentSync: TextDocumentSyncKind.Incremental,
-    completionProvider: { 
+    completionProvider: {
       resolveProvider: false, // Assuming you don't have a resolveProvider
-      triggerCharacters: [ '"', ':', ' ' ]  // Might need to adjust for your use case
+      triggerCharacters: ["\"", ":", " "] // Might need to adjust for your use case
     },
     semanticTokensProvider: {
       legend: buildSemanticTokensLegend(capabilities.textDocument?.semanticTokens),
@@ -192,9 +190,18 @@ const validateSchema = async (document) => {
 
     const deprecations = annotations.annotatedWith("deprecated");
     for (const deprecated of deprecations) {
-      if (deprecated.annotation("deprecated").some((deprecated) => deprecated)) {
-        const message = deprecated.annotation("x-deprecationMessage").join("\n") || "deprecated";
-        diagnostics.push(buildDiagnostic(deprecated.parent(), message, DiagnosticSeverity.Warning, [DiagnosticTag.Deprecated]));
+      if (
+        deprecated.annotation("deprecated").some((deprecated) => deprecated)
+      ) {
+        const message
+          = deprecated.annotation("x-deprecationMessage").join("\n")
+          || "deprecated";
+        diagnostics.push(buildDiagnostic(
+          deprecated.parent(),
+          message,
+          DiagnosticSeverity.Warning,
+          [DiagnosticTag.Deprecated]
+        ));
       }
     }
   }
@@ -202,7 +209,12 @@ const validateSchema = async (document) => {
   connection.sendDiagnostics({ uri: document.uri, diagnostics });
 };
 
-const buildDiagnostic = (instance, message, severity = DiagnosticSeverity.Error, tags = []) => {
+const buildDiagnostic = (
+  instance,
+  message,
+  severity = DiagnosticSeverity.Error,
+  tags = []
+) => {
   return {
     severity: severity,
     tags: tags,
@@ -241,13 +253,13 @@ const buildSemanticTokensLegend = (capability) => {
   }
 
   const clientTokenModifiers = new Set(capability.tokenModifiers);
-  const serverTokenModifiers = [
-  ];
+  const serverTokenModifiers = [];
 
   const tokenModifiers = [];
   for (const tokenModifier of serverTokenModifiers) {
     if (clientTokenModifiers.has(tokenModifier)) {
-      semanticTokensLegend.tokenModifiers[tokenModifier] = tokenModifiers.length;
+      semanticTokensLegend.tokenModifiers[tokenModifier]
+        = tokenModifiers.length;
       tokenModifiers.push(tokenModifier);
     }
   }
@@ -317,44 +329,54 @@ connection.languages.semanticTokens.onDelta(({ textDocument, previousResultId })
   return builder.buildEdits();
 });
 
-
 function findPropertyAtPosition(instance, position) {
   for (const [key, value] of instance.entries()) {
-      if (position.line >= key.startPosition().line && 
-          position.character >= key.startPosition().character &&
-          position.line <= value.endPosition().line && 
-          position.character <= value.endPosition().character) {  
-             return { key, value }; // Return both key and value
-          }
-      }
-      return undefined;
+    if (
+      position.line >= key.startPosition().line
+      && position.character >= key.startPosition().character
+      && position.line <= value.endPosition().lastIndexOf()
+      && position.character <= value.endPosition().character
+    ) {
+      return { key, value }; // Return both key and value
+    }
+  }
+  return undefined;
 }
 
 connection.onCompletion((textDocumentPosition) => {
   const doc = documents.get(textDocumentPosition.textDocument.uri);
-  connection.console.log("Completion is Triggered !")
-  if (!doc) { 
-      return []; 
+  connection.console.log("Completion is Triggered !");
+
+  if (!doc) {
+    return [];
   }
-  let schemaSuggestions = ["http://json-schema.org/draft-07/schema#", "http://json-schema.org/draft-04/schema",
-  "http://json-schema.org/draft-06/schema",
-  "http://json-schema.org/draft-07/schema"]
+
+  const schemaSuggestions = [
+    "http://json-schema.org/draft-07/schema#",
+    "http://json-schema.org/draft-04/schema",
+    "http://json-schema.org/draft-06/schema",
+    "http://json-schema.org/draft-07/schema"
+  ];
+
   const instance = JsoncInstance.fromTextDocument(doc);
-  const currentProperty = findPropertyAtPosition(instance, textDocumentPosition.position);
+  const currentProperty = findPropertyAtPosition(
+    instance,
+    textDocumentPosition.position
+  );
 
   if (currentProperty?.key.value() === "$schema") {
-    connection.console.log("***** Found the $schema keywork *****")
-    const currentSchemaURI = currentProperty.value.value();
-      //  Your list of schema URIs
-     
-      return schemaSuggestions.map(uri => { 
-        return{ 
-          label: uri, 
-          kind: CompletionItemKind.Keyword
-      } 
-    }); 
+    connection.console.log("***** Found the $schema keywork *****");
+    // const currentSchemaURI = currentProperty.value.value();
+    //  Your list of schema URIs
+
+    return schemaSuggestions.map((uri) => {
+      return {
+        label: uri,
+        kind: CompletionItemKind.Keyword
+      };
+    });
   }
-  connection.console.log("***** Didn't find the $schema keywork *****")
+  connection.console.log("***** Didn't find the $schema keywork *****");
 });
 
 documents.listen(connection);
