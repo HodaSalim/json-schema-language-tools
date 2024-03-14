@@ -21,6 +21,7 @@ export class JsoncInstance {
       allowTrailingComma: true,
       allowEmptyContent: true
     });
+
     return new JsoncInstance(textDocument, root, root, "", {});
   }
 

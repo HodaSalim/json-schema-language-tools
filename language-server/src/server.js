@@ -165,6 +165,10 @@ const validateSchema = async (document) => {
   const diagnostics = [];
 
   const instance = JsoncInstance.fromTextDocument(document);
+  if (instance.typeOf() === "undefined") {
+    return;
+  }
+
   const $schema = instance.get("#/$schema");
   const contextDialectUri = $schema.value();
   const schemaResources = decomposeSchemaDocument(instance, contextDialectUri);
