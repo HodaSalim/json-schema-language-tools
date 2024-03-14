@@ -334,7 +334,7 @@ function findPropertyAtPosition(instance, position) {
     if (
       position.line >= key.startPosition().line
       && position.character >= key.startPosition().character
-      && position.line <= value.endPosition().lastIndexOf()
+      && position.line <= value.endPosition().line
       && position.character <= value.endPosition().character
     ) {
       return { key, value }; // Return both key and value
@@ -346,18 +346,15 @@ function findPropertyAtPosition(instance, position) {
 connection.onCompletion((textDocumentPosition) => {
   const doc = documents.get(textDocumentPosition.textDocument.uri);
   connection.console.log("Completion is Triggered !");
-
   if (!doc) {
     return [];
   }
-
   const schemaSuggestions = [
     "http://json-schema.org/draft-07/schema#",
     "http://json-schema.org/draft-04/schema",
     "http://json-schema.org/draft-06/schema",
     "http://json-schema.org/draft-07/schema"
   ];
-
   const instance = JsoncInstance.fromTextDocument(doc);
   const currentProperty = findPropertyAtPosition(
     instance,
@@ -366,13 +363,18 @@ connection.onCompletion((textDocumentPosition) => {
 
   if (currentProperty?.key.value() === "$schema") {
     connection.console.log("***** Found the $schema keywork *****");
-    // const currentSchemaURI = currentProperty.value.value();
+    //const currentSchemaURI = currentProperty.value.value();
     //  Your list of schema URIs
 
     return schemaSuggestions.map((uri) => {
       return {
         label: uri,
         kind: CompletionItemKind.Keyword
+        // textEdit: TextEdit.replace(
+        //   currentProperty.value.startPosition(),
+        //   currentProperty.value.endPosition(),
+        //   uri
+        // )
       };
     });
   }
